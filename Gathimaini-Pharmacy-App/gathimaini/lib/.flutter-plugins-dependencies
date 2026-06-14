@@ -1,0 +1,8 @@
+dependencies:
+  flutter:
+    sdk: flutter
+  # Update these to their latest versions:
+  file_picker: ^8.1.4
+  image_picker: ^1.1.2
+  shared_preferences: ^2.3.3
+  google_maps_flutter: ^2.10.0
