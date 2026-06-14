@@ -1,0 +1,581 @@
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const StudentSystemApp());
+}
+
+/// ==========================
+/// MOCK DATABASE
+/// ==========================
+// Holds all registered students so you can login after registering
+List<Student> globalStudents = [
+  Student(
+    name: "Demo Student",
+    regNo: "student",
+    course: "Computer Science",
+    password: "mku123",
+  ),
+];
+
+/// ==========================
+/// STUDENT MODEL
+/// ==========================
+class Student {
+  String name;
+  String regNo;
+  String course;
+  String password;
+
+  Student({
+    required this.name,
+    required this.regNo,
+    required this.course,
+    required this.password,
+  });
+}
+
+/// ==========================
+/// MAIN APP
+/// ==========================
+class StudentSystemApp extends StatelessWidget {
+  const StudentSystemApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Student System',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        useMaterial3: true,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.teal, width: 2),
+          ),
+        ),
+      ),
+      home: const LoginPage(),
+    );
+  }
+}
+
+/// ==========================
+/// LOGIN PAGE
+/// ==========================
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final userCtrl = TextEditingController();
+  final passCtrl = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+
+  void login() {
+    if (formKey.currentState!.validate()) {
+      try {
+        // Search for matching student in our mock database
+        final user = globalStudents.firstWhere(
+              (s) => s.regNo == userCtrl.text && s.password == passCtrl.text,
+        );
+
+        // Login successful -> Go to Dashboard
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DashboardPage(currentUser: user),
+          ),
+        );
+      } catch (e) {
+        // No match found
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Invalid Registration Number or Password"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF00695C), Color(0xFF4DB6AC)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380), // Makes it small and centered
+              child: Card(
+                margin: const EdgeInsets.all(20),
+                elevation: 12,
+                shadowColor: Colors.black45,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.school_rounded,
+                            size: 80, color: Colors.teal),
+                        const SizedBox(height: 15),
+                        const Text(
+                          "Welcome Back",
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          "Login to your account",
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                        const SizedBox(height: 30),
+                        TextFormField(
+                          controller: userCtrl,
+                          decoration: const InputDecoration(
+                            labelText: "Registration No.",
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                          validator: (v) =>
+                          v!.isEmpty ? "Enter Reg Number" : null,
+                        ),
+                        const SizedBox(height: 15),
+                        TextFormField(
+                          controller: passCtrl,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: "Password",
+                            prefixIcon: Icon(Icons.lock_outline),
+                          ),
+                          validator: (v) =>
+                          v!.isEmpty ? "Enter password" : null,
+                        ),
+                        const SizedBox(height: 25),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: login,
+                            child: const Text(
+                              "LOGIN",
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Don't have an account?",
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const RegisterPage()),
+                                );
+                              },
+                              child: const Text(
+                                "Register",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ==========================
+/// REGISTER PAGE
+/// ==========================
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final nameCtrl = TextEditingController();
+  final regCtrl = TextEditingController();
+  final courseCtrl = TextEditingController();
+  final passCtrl = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+
+  void registerStudent() {
+    if (formKey.currentState!.validate()) {
+      // Check if user already exists
+      bool exists = globalStudents.any((s) => s.regNo == regCtrl.text);
+      if (exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Registration number already exists!"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      // Add to global DB
+      setState(() {
+        globalStudents.add(Student(
+          name: nameCtrl.text,
+          regNo: regCtrl.text,
+          course: courseCtrl.text,
+          password: passCtrl.text,
+        ));
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Registration Successful! Please login."),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Return to login screen
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text("Create Account"),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF00695C), Color(0xFF4DB6AC)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Card(
+                margin: const EdgeInsets.all(20),
+                elevation: 12,
+                shadowColor: Colors.black45,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_add_alt_1_rounded,
+                            size: 70, color: Colors.teal),
+                        const SizedBox(height: 20),
+                        const Text(
+                          "Student Registration",
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 25),
+                        TextFormField(
+                          controller: nameCtrl,
+                          decoration: const InputDecoration(
+                              labelText: "Full Name",
+                              prefixIcon: Icon(Icons.badge_outlined)),
+                          validator: (v) => v!.isEmpty ? "Enter full name" : null,
+                        ),
+                        const SizedBox(height: 15),
+                        TextFormField(
+                          controller: regCtrl,
+                          decoration: const InputDecoration(
+                              labelText: "Reg Number (Username)",
+                              prefixIcon: Icon(Icons.numbers)),
+                          validator: (v) => v!.isEmpty ? "Enter reg number" : null,
+                        ),
+                        const SizedBox(height: 15),
+                        TextFormField(
+                          controller: courseCtrl,
+                          decoration: const InputDecoration(
+                              labelText: "Course",
+                              prefixIcon: Icon(Icons.book_outlined)),
+                          validator: (v) => v!.isEmpty ? "Enter course" : null,
+                        ),
+                        const SizedBox(height: 15),
+                        TextFormField(
+                          controller: passCtrl,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                              labelText: "Password",
+                              prefixIcon: Icon(Icons.lock_outline)),
+                          validator: (v) => v!.isEmpty ? "Enter password" : null,
+                        ),
+                        const SizedBox(height: 25),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: registerStudent,
+                            child: const Text(
+                              "REGISTER",
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ==========================
+/// DASHBOARD PAGE
+/// ==========================
+class DashboardPage extends StatelessWidget {
+  final Student currentUser;
+
+  const DashboardPage({super.key, required this.currentUser});
+
+  void logout(BuildContext context) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+      appBar: AppBar(
+        title: const Text("Dashboard"),
+        backgroundColor: Colors.teal,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: "Logout",
+            onPressed: () => logout(context),
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Modern Welcome Banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00695C), Color(0xFF26A69A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 10,
+                    offset: Offset(0, 5),
+                  )
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Welcome back,",
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    currentUser.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      const Icon(Icons.book, color: Colors.white70, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        currentUser.course,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // Section Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Active Students",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    "${globalStudents.length} Total",
+                    style: TextStyle(
+                        color: Colors.teal.shade800,
+                        fontWeight: FontWeight.bold),
+                  ),
+                )
+              ],
+            ),
+
+            const SizedBox(height: 15),
+
+            // Modern List View
+            Expanded(
+              child: ListView.separated(
+                itemCount: globalStudents.length,
+                separatorBuilder: (context, index) =>
+                const SizedBox(height: 10),
+                itemBuilder: (context, i) {
+                  final student = globalStudents[i];
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.shade200,
+                          blurRadius: 5,
+                          offset: const Offset(0, 3),
+                        )
+                      ],
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
+                      leading: CircleAvatar(
+                        radius: 25,
+                        backgroundColor: Colors.teal.shade100,
+                        child: Text(
+                          student.name[0].toUpperCase(),
+                          style: TextStyle(
+                            color: Colors.teal.shade900,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 20,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        student.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          "${student.regNo} • ${student.course}",
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ),
+                      trailing: Icon(Icons.chevron_right,
+                          color: Colors.grey.shade400),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
