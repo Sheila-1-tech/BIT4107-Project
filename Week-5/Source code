@@ -1,0 +1,241 @@
+// File: c:\Projects\pharmacy_app\pharmacy_app\lib\services\drug_lookup_screen.dart
+
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:async';
+
+import '../models/medicine.dart';
+import 'pharmacy_service.dart';
+
+class DrugLookupScreen extends StatefulWidget {
+  const DrugLookupScreen({super.key});
+
+  @override
+  State<DrugLookupScreen> createState() => _DrugLookupScreenState();
+}
+
+class _DrugLookupScreenState extends State<DrugLookupScreen> {
+  Future<List<dynamic>>? _medicinesFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  late final StreamSubscription<List<Medicine>> _medSub;
+  List<Medicine> _localMedicines = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _localMedicines = PharmacyService.instance.allMedicines;
+    _medSub = PharmacyService.instance.medicinesStream.listen((list) {
+      if (mounted) setState(() => _localMedicines = list);
+    });
+  }
+
+  @override
+  void dispose() {
+    _medSub.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// 1. ASYNC API CONSUMER: Fetches data from the public REST API
+  Future<List<dynamic>> fetchMedicines([String query = '']) async {
+    String urlStr =
+        '<https://api.fda.gov/drug/label.json?search=openfda.product_type>:"HUMAN PRESCRIPTION DRUG"';
+
+    if (query.isNotEmpty) {
+      urlStr +=
+          '+AND+(openfda.brand_name:"$query"+OR+openfda.generic_name:"$query")';
+    }
+
+    urlStr += '&limit=15';
+
+    final url = Uri.parse(urlStr);
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      return data['results'] as List<dynamic>;
+    } else if (response.statusCode == 404) {
+      return []; // FDA returns 404 when search yields 0 matches
+    } else {
+      throw Exception('Failed to load medicines from the API');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F7F6),
+      appBar: AppBar(
+        title: const Text('Medicines & FDA Lookup'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.storage_rounded),
+            tooltip: 'View Local DB',
+            onPressed: () {
+              _searchController.clear();
+              setState(() {
+                _searchQuery = '';
+                _medicinesFuture = null;
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () {
+              setState(() {
+                if (_searchQuery.isNotEmpty) {
+                  _medicinesFuture = fetchMedicines(_searchQuery);
+                } else {
+                  _medicinesFuture = fetchMedicines();
+                }
+              });
+            },
+          ),
+        ],
+      ),
+      floatingActionButton: _searchQuery.isEmpty || _medicinesFuture == null
+          ? FloatingActionButton(
+              onPressed: () => _showAddEditMedicineDialog(context),
+              backgroundColor: const Color(0xFF1B8F4A),
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.add),
+            )
+          : null,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                  if (value.isEmpty) {
+                    _medicinesFuture = null;
+                  }
+                });
+              },
+              onSubmitted: (value) {
+                setState(() {
+                  _searchQuery = value.trim();
+                  _medicinesFuture = fetchMedicines(_searchQuery);
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Search brand or manufacturer...',
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF1B8F4A)),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                            _medicinesFuture = null;
+                          });
+                        },
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: _searchQuery.isEmpty || _medicinesFuture == null
+                ? _buildLocalDbList()
+                // 2. DISPLAY RECORDS: Uses FutureBuilder to handle the API response states
+                : FutureBuilder<List<dynamic>>(
+                    future: _medicinesFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: Color(0xFF1B8F4A)),
+                        );
+                      } else if (snapshot.hasError) {
+                        return Center(
+                          child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent)),
+                        );
+                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(child: Text('No medicines found.'));
+                      }
+
+                      final medicines = snapshot.data!;
+                      final query = _searchQuery.toLowerCase();
+
+                      final filteredMedicines = medicines.where((medicine) {
+                        final openfda = medicine['openfda'] ?? {};
+                        final brandName =
+                            ((openfda['brand_name'] as List<dynamic>?)?.first ?? 'Unknown Brand')
+                                .toString()
+                                .toLowerCase();
+                        final manufacturer =
+                            ((openfda['manufacturer_name'] as List<dynamic>?)?.first ?? 'Unknown Manufacturer')
+                                .toString()
+                                .toLowerCase();
+                        return brandName.contains(query) || manufacturer.contains(query);
+                      }).toList();
+
+                      if (filteredMedicines.isEmpty) {
+                        return const Center(child: Text('No matching medicines found.'));
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredMedicines.length,
+                        itemBuilder: (context, index) {
+                          final medicine = filteredMedicines[index];
+                          final openfda = medicine['openfda'] ?? {};
+
+                          final brandName = (openfda['brand_name'] as List<dynamic>?)?.first ?? 'Unknown Brand';
+                          final manufacturer = (openfda['manufacturer_name'] as List<dynamic>?)?.first ?? 'Unknown Manufacturer';
+                          final purpose = (medicine['purpose'] as List<dynamic>?)?.first ??
+                              (medicine['indications_and_usage'] as List<dynamic>?)?.first ??
+                              (medicine['description'] as List<dynamic>?)?.first ??
+                              'Purpose not provided by manufacturer.';
+
+                          return Card(
+                            elevation: 4,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    brandName,
+                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  ),
+                                  Text(manufacturer, style: const TextStyle(color: Colors.grey)),
+                                  const SizedBox(height: 8),
+                                  Text(purpose, maxLines: 3, overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method for local DB list...
+  Widget _buildLocalDbList() {
+    // (Local Database UI omitted for brevity)
+    return const Center(child: Text('Showing Local Database...'));
+  }
+
+  // Helper method to Add/Edit to local DB...
+  void _showAddEditMedicineDialog(BuildContext context, [Medicine? existing]) {
+    // (Add/Edit Dialog logic omitted for brevity)
+  }
+}
