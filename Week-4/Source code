@@ -1,0 +1,138 @@
+// File: c:\Projects\pharmacy_app\pharmacy_app\lib\services\database_helper.dart
+
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import '../models/medicine.dart';
+
+class DatabaseHelper {
+  static final DatabaseHelper instance = DatabaseHelper._init();
+  static Database? _database;
+
+  DatabaseHelper._init();
+
+  
+  // Database Initialization & Setup
+ 
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('pharmacy_v2.db'); // Create fresh, unified database
+    return _database!;
+  }
+
+  Future<Database> _initDB(String filePath) async {
+    try {
+      print('DEBUG [SQLite]: Initializing database...');
+      String path = filePath;
+
+      // Fix: getDatabasesPath() crashes on the Web.
+      if (!kIsWeb) {
+        final dbPath = await getDatabasesPath();
+        path = join(dbPath, filePath);
+        print('DEBUG [SQLite]: Mobile/Desktop path resolved to $path');
+      } else {
+        print(
+          'DEBUG [SQLite]: Web environment detected. Using virtual path: $path',
+        );
+      }
+
+      final db = await openDatabase(path, version: 1, onCreate: _createDB);
+      print('DEBUG [SQLite]: Database opened successfully!');
+      return db;
+    } catch (e, stackTrace) {
+      print('ERROR [SQLite _initDB]: $e');
+      print('STACKTRACE: $stackTrace');
+      rethrow; // Important: rethrow so the FutureBuilder knows it failed!
+    }
+  }
+
+  Future _createDB(Database db, int version) async {
+    try {
+      print('DEBUG [SQLite]: Creating medicines table...');
+      await db.execute('''
+        CREATE TABLE medicines (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          price REAL NOT NULL,
+          rating REAL NOT NULL,
+          category TEXT NOT NULL,
+          imageUrl TEXT,
+          stockQuantity INTEGER NOT NULL DEFAULT 100
+        )
+      ''');
+      print('DEBUG [SQLite]: Table created successfully!');
+    } catch (e) {
+      print('ERROR [SQLite _createDB]: $e');
+      rethrow;
+    }
+  }
+
+  
+  // CRUD Operations
+ 
+  // 1. CREATE
+  Future<void> insertMedicine(Medicine medicine) async {
+    try {
+      final db = await instance.database;
+      await db.insert('medicines', medicine.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+      print('DEBUG [SQLite]: Inserted medicine with ID: ${medicine.id}');
+    } catch (e) {
+      print('ERROR [SQLite insertMedicine]: $e');
+      rethrow;
+    }
+  }
+
+  // 2. READ
+  Future<List<Medicine>> getAllMedicines() async {
+    try {
+      print('DEBUG [SQLite]: Fetching all medicines...');
+      final db = await instance.database;
+      final result = await db.query('medicines');
+      print('DEBUG [SQLite]: Fetched ${result.length} medicines.');
+      return result.map((json) => Medicine.fromMap(json)).toList();
+    } catch (e, stackTrace) {
+      print('ERROR [SQLite getAllMedicines]: $e');
+      print('STACKTRACE: $stackTrace');
+      rethrow; // Tells the FutureBuilder to show the error UI
+    }
+  }
+
+  // 3. UPDATE
+  Future<int> updateMedicine(Medicine medicine) async {
+    try {
+      print('DEBUG [SQLite]: Updating medicine with ID: ${medicine.id}');
+      final db = await instance.database;
+      final count = await db.update(
+        'medicines',
+        medicine.toMap(),
+        where: 'id = ?',
+        whereArgs: [medicine.id],
+      );
+      print('DEBUG [SQLite]: Updated $count record(s)');
+      return count;
+    } catch (e) {
+      print('ERROR [SQLite updateMedicine]: $e');
+      rethrow;
+    }
+  }
+
+  // 4. DELETE
+  Future<int> deleteMedicine(String id) async {
+    try {
+      print('DEBUG [SQLite]: Deleting medicine with ID: $id');
+      final db = await instance.database;
+      final count = await db.delete(
+        'medicines',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      print('DEBUG [SQLite]: Deleted $count record(s)');
+      return count;
+    } catch (e) {
+      print('ERROR [SQLite deleteMedicine]: $e');
+      rethrow;
+    }
+  }
+}
