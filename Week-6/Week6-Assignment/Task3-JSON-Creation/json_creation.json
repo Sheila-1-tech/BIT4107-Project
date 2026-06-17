@@ -1,0 +1,59 @@
+Week 6 Task 3: JSON Creation
+1. Student Information JSON
+
+This JSON structure represents a student’s basic academic details in a system.
+
+{
+  "regno": "BIT001",
+  "name": "Mary",
+  "course": "BIT",
+  "year": "3"
+}
+2. Extended Student Information JSON 
+
+This version includes more realistic system fields used in mobile applications.
+
+{
+  "regno": "BIT002",
+  "name": "John Kamau",
+  "course": "Bachelor of Science in Information Technology",
+  "year": "2",
+  "email": "john.kamau@example.com",
+  "phone": "0712345678",
+  "campus": "Main Campus"
+}
+3. Multiple Students JSON Array 
+
+This shows how multiple records are stored in a system.
+
+[
+  {
+    "regno": "BIT001",
+    "name": "Mary Wanjiku",
+    "course": "BIT",
+    "year": "3"
+  },
+  {
+    "regno": "BIT002",
+    "name": "John Kamau",
+    "course": "BIT",
+    "year": "2"
+  },
+  {
+    "regno": "BIT003",
+    "name": "Amina Ali",
+    "course": "BIT",
+    "year": "1"
+  }
+]
+Explanation of JSON Structure
+
+JSON (JavaScript Object Notation) is a lightweight data format used to store and exchange data between a client (mobile app) and a server.
+
+Data is stored in key-value pairs
+Keys are written in double quotes
+Values can be strings, numbers, arrays, or objects
+JSON is commonly used in APIs and mobile applications for communication
+Conclusion
+
+JSON is an essential part of mobile application development because it allows structured data exchange between applications and servers in a simple and readable format.
