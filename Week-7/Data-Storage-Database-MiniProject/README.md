@@ -21,7 +21,7 @@ By completing these tasks, the following objectives were achieved:
 
 ---
 
-# 📂 Repository Structure
+Repository Structure
 
 ```text
 Week7-Data-Storage-Database-MiniProject/
@@ -40,7 +40,7 @@ Week7-Data-Storage-Database-MiniProject/
 
 ---
 
-# 📌 Task 1: Storage Method Comparison
+Task 1: Storage Method Comparison
 
 This task compares the major storage methods used in mobile application development.
 
