@@ -1,0 +1,994 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
+
+// ============================================================================
+// DATA MODELS
+// ============================================================================
+
+class PatientModel {
+  final int? id;
+  final String fullName;
+  final String phone;
+  final String dateOfBirth;
+  final String allergies;
+
+  PatientModel({
+    this.id,
+    required this.fullName,
+    required this.phone,
+    required this.dateOfBirth,
+    required this.allergies,
+  });
+
+  Map<String, dynamic> toMap() {
+    final map = <String, dynamic>{
+      'fullName': fullName,
+      'phone': phone,
+      'dateOfBirth': dateOfBirth,
+      'allergies': allergies,
+    };
+    if (id != null) {
+      map['id'] = id;
+    }
+    return map;
+  }
+
+  factory PatientModel.fromMap(Map<String, dynamic> map) {
+    return PatientModel(
+      id: map['id'] as int?,
+      fullName: map['fullName'] as String,
+      phone: map['phone'] as String,
+      dateOfBirth: map['dateOfBirth'] as String,
+      allergies: map['allergies'] as String,
+    );
+  }
+}
+
+class DispenseRecordModel {
+  final int? id;
+  final int patientId;
+  final String patientName;
+  final String medicationName;
+  final int quantity;
+  final String timestamp;
+
+  DispenseRecordModel({
+    this.id,
+    required this.patientId,
+    required this.patientName,
+    required this.medicationName,
+    required this.quantity,
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toMap() {
+    final map = <String, dynamic>{
+      'patientId': patientId,
+      'patientName': patientName,
+      'medicationName': medicationName,
+      'quantity': quantity,
+      'timestamp': timestamp,
+    };
+    if (id != null) {
+      map['id'] = id;
+    }
+    return map;
+  }
+
+  factory DispenseRecordModel.fromMap(Map<String, dynamic> map) {
+    return DispenseRecordModel(
+      id: map['id'] as int?,
+      patientId: map['patientId'] as int,
+      patientName: map['patientName'] as String,
+      medicationName: map['medicationName'] as String,
+      quantity: map['quantity'] as int,
+      timestamp: map['timestamp'] as String,
+    );
+  }
+}
+
+// ============================================================================
+// DATABASE LOGIC (CRUD)
+// ============================================================================
+
+class PharmacyManagementDB {
+  static final PharmacyManagementDB instance = PharmacyManagementDB._init();
+  static Database? _database;
+  static Future<Database>? _databaseFuture;
+
+  // Track if we should bypass SQLite entirely (Web, Windows, or if init fails)
+  bool _useInMemory = kIsWeb;
+
+  // In-memory fallback for Web support
+  final List<PatientModel> _webPatients = [];
+  final List<DispenseRecordModel> _webRecords = [];
+  int _webPatientIdCounter = 1;
+  int _webRecordIdCounter = 1;
+
+  PharmacyManagementDB._init();
+
+  Future<Database> get database async {
+    if (_useInMemory)
+      throw UnsupportedError('SQLite is disabled, using in-memory mode.');
+    if (_database != null) return _database!;
+    _databaseFuture ??= _initDB('pharmacy_management_module.db');
+    try {
+      _database = await _databaseFuture!;
+      return _database!;
+    } catch (e) {
+      _useInMemory = true;
+      throw UnsupportedError(
+        'SQLite init failed, switching to in-memory mode.',
+      );
+    }
+  }
+
+  Future<Database> _initDB(String filePath) async {
+    final dbPath = await getDatabasesPath();
+    final path = p.join(dbPath, filePath);
+    return await openDatabase(path, version: 1, onCreate: _createDB);
+  }
+
+  Future<void> _createDB(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE patients_module (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fullName TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        dateOfBirth TEXT NOT NULL,
+        allergies TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE dispensing_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patientId INTEGER NOT NULL,
+        patientName TEXT NOT NULL,
+        medicationName TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY (patientId) REFERENCES patients_module (id)
+      )
+    ''');
+  }
+
+  // --- Patient CRUD ---
+  Future<void> insertPatient(PatientModel patient) async {
+    if (!_useInMemory) {
+      try {
+        final db = await instance.database;
+        await db.insert('patients_module', patient.toMap());
+        return;
+      } catch (e) {
+        _useInMemory = true;
+      }
+    }
+
+    // In-memory fallback
+    _webPatients.add(
+      PatientModel(
+        id: _webPatientIdCounter++,
+        fullName: patient.fullName,
+        phone: patient.phone,
+        dateOfBirth: patient.dateOfBirth,
+        allergies: patient.allergies,
+      ),
+    );
+  }
+
+  Future<List<PatientModel>> getAllPatients() async {
+    if (!_useInMemory) {
+      try {
+        final db = await instance.database;
+        final result = await db.query(
+          'patients_module',
+          orderBy: 'fullName ASC',
+        );
+        return result.map((json) => PatientModel.fromMap(json)).toList();
+      } catch (e) {
+        _useInMemory = true;
+      }
+    }
+    return List.unmodifiable(_webPatients);
+  }
+
+  // --- Dispensing Records CRUD ---
+  Future<void> insertDispenseRecord(DispenseRecordModel record) async {
+    if (!_useInMemory) {
+      try {
+        final db = await instance.database;
+        await db.insert('dispensing_records', record.toMap());
+        return;
+      } catch (e) {
+        _useInMemory = true;
+      }
+    }
+
+    _webRecords.add(
+      DispenseRecordModel(
+        id: _webRecordIdCounter++,
+        patientId: record.patientId,
+        patientName: record.patientName,
+        medicationName: record.medicationName,
+        quantity: record.quantity,
+        timestamp: record.timestamp,
+      ),
+    );
+  }
+
+  Future<List<DispenseRecordModel>> getDispenseRecords({DateTime? date}) async {
+    if (!_useInMemory) {
+      try {
+        final db = await instance.database;
+        String? whereClause;
+        List<dynamic>? whereArgs;
+
+        if (date != null) {
+          final dateString = date.toIso8601String().substring(0, 10);
+          whereClause = 'timestamp LIKE ?';
+          whereArgs = ['$dateString%'];
+        }
+
+        final result = await db.query(
+          'dispensing_records',
+          where: whereClause,
+          whereArgs: whereArgs,
+          orderBy: 'timestamp DESC',
+        );
+        return result.map((json) => DispenseRecordModel.fromMap(json)).toList();
+      } catch (e) {
+        _useInMemory = true;
+      }
+    }
+
+    var records = _webRecords;
+    if (date != null) {
+      final dateString = date.toIso8601String().substring(0, 10);
+      records = records
+          .where((r) => r.timestamp.startsWith(dateString))
+          .toList();
+    }
+    return records.reversed.toList();
+  }
+
+  // --- Delete Operations ---
+  Future<void> deletePatient(int id) async {
+    if (!_useInMemory) {
+      try {
+        final db = await instance.database;
+        await db.delete('patients_module', where: 'id = ?', whereArgs: [id]);
+        await db.delete(
+          'dispensing_records',
+          where: 'patientId = ?',
+          whereArgs: [id],
+        );
+        return;
+      } catch (e) {
+        _useInMemory = true;
+      }
+    }
+    _webPatients.removeWhere((p) => p.id == id);
+    _webRecords.removeWhere((r) => r.patientId == id);
+  }
+
+  Future<void> deleteDispenseRecord(int id) async {
+    if (!_useInMemory) {
+      try {
+        final db = await instance.database;
+        await db.delete('dispensing_records', where: 'id = ?', whereArgs: [id]);
+        return;
+      } catch (e) {
+        _useInMemory = true;
+      }
+    }
+    _webRecords.removeWhere((r) => r.id == id);
+  }
+}
+
+// ============================================================================
+// UI SCREENS
+// ============================================================================
+
+class PharmacyManagementModule extends StatefulWidget {
+  const PharmacyManagementModule({super.key});
+
+  @override
+  State<PharmacyManagementModule> createState() =>
+      _PharmacyManagementModuleState();
+}
+
+class _PharmacyManagementModuleState extends State<PharmacyManagementModule>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final GlobalKey<_RegisterPatientTabState> _registerKey = GlobalKey();
+  final GlobalKey<_DispenseMedicationTabState> _dispenseKey = GlobalKey();
+  final GlobalKey<_ReportsTabState> _reportsKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      if (_tabController.index == 0) {
+        _registerKey.currentState?.refresh();
+      } else if (_tabController.index == 1) {
+        _dispenseKey.currentState?.refresh();
+      } else if (_tabController.index == 2) {
+        _reportsKey.currentState?.refresh();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pharmacy Module'),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: const Color(0xFF1B8F4A),
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: const Color(0xFF1B8F4A),
+          tabs: const [
+            Tab(icon: Icon(Icons.person_add), text: 'Register'),
+            Tab(icon: Icon(Icons.medication), text: 'Dispense'),
+            Tab(icon: Icon(Icons.analytics), text: 'Reports'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _RegisterPatientTab(key: _registerKey),
+          _DispenseMedicationTab(key: _dispenseKey),
+          _ReportsTab(key: _reportsKey),
+        ],
+      ),
+    );
+  }
+}
+
+// ----------------------------------------------------------------------------
+// FEATURE 1: REGISTER PATIENTS
+// ----------------------------------------------------------------------------
+
+class _RegisterPatientTab extends StatefulWidget {
+  const _RegisterPatientTab({super.key});
+
+  @override
+  State<_RegisterPatientTab> createState() => _RegisterPatientTabState();
+}
+
+class _RegisterPatientTabState extends State<_RegisterPatientTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _dobCtrl = TextEditingController();
+  final _allergiesCtrl = TextEditingController();
+
+  late Future<List<PatientModel>> _patientsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPatients();
+  }
+
+  void _fetchPatients() =>
+      _patientsFuture = PharmacyManagementDB.instance.getAllPatients();
+
+  void refresh() {
+    if (mounted) setState(() => _fetchPatients());
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _dobCtrl.text = picked.toIso8601String().split('T')[0];
+      });
+    }
+  }
+
+  Future<void> _savePatient() async {
+    if (_formKey.currentState?.validate() ?? false) {
+      final patient = PatientModel(
+        fullName: _nameCtrl.text.trim(),
+        phone: _phoneCtrl.text.trim(),
+        dateOfBirth: _dobCtrl.text.trim(),
+        allergies: _allergiesCtrl.text.trim(),
+      );
+      try {
+        await PharmacyManagementDB.instance.insertPatient(patient);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Patient registered successfully!')),
+          );
+          _formKey.currentState?.reset();
+          _nameCtrl.clear();
+          _phoneCtrl.clear();
+          _dobCtrl.clear();
+          _allergiesCtrl.clear();
+          refresh();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error registering patient: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          'Add New Patient Profile',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 20),
+        Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person),
+                ),
+                validator: (val) =>
+                    val == null || val.isEmpty ? 'Please enter a name' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.phone),
+                ),
+                validator: (val) => val == null || val.isEmpty
+                    ? 'Please enter a phone number'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _dobCtrl,
+                readOnly: true,
+                onTap: _selectDate,
+                decoration: const InputDecoration(
+                  labelText: 'Date of Birth',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today),
+                ),
+                validator: (val) => val == null || val.isEmpty
+                    ? 'Please select a date of birth'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _allergiesCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Known Allergies',
+                  hintText: 'List any allergies or type "None"',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.medical_information),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: _savePatient,
+                  icon: const Icon(Icons.save),
+                  label: const Text(
+                    'Save Patient Profile',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF1B8F4A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 16),
+        const Text(
+          'Registered Patients',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        FutureBuilder<List<PatientModel>>(
+          future: _patientsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(color: Color(0xFF1B8F4A)),
+              );
+            }
+            final patients = snapshot.data ?? [];
+            if (patients.isEmpty) {
+              return const Text(
+                'No patients registered yet.',
+                style: TextStyle(color: Colors.grey),
+              );
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: patients.length,
+              itemBuilder: (context, index) {
+                final p = patients[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFFEAF7EF),
+                      child: Text(
+                        '${p.id}',
+                        style: const TextStyle(color: Color(0xFF1B8F4A)),
+                      ),
+                    ),
+                    title: Text(
+                      p.fullName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text('DOB: ${p.dateOfBirth} • Phone: ${p.phone}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () async {
+                        await PharmacyManagementDB.instance.deletePatient(
+                          p.id!,
+                        );
+                        refresh();
+                      },
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// ----------------------------------------------------------------------------
+// FEATURE 2: STORE DISPENSING RECORDS
+// ----------------------------------------------------------------------------
+
+class _DispenseMedicationTab extends StatefulWidget {
+  const _DispenseMedicationTab({super.key});
+
+  @override
+  State<_DispenseMedicationTab> createState() => _DispenseMedicationTabState();
+}
+
+class _DispenseMedicationTabState extends State<_DispenseMedicationTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  final _formKey = GlobalKey<FormState>();
+  int? _selectedPatientId;
+  final _medicationCtrl = TextEditingController();
+  final _qtyCtrl = TextEditingController();
+
+  late Future<List<PatientModel>> _patientsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPatients();
+  }
+
+  void _fetchPatients() =>
+      _patientsFuture = PharmacyManagementDB.instance.getAllPatients();
+
+  void refresh() {
+    if (mounted) setState(() => _fetchPatients());
+  }
+
+  Future<void> _dispense(List<PatientModel> currentPatients) async {
+    if (_formKey.currentState?.validate() ?? false) {
+      if (_selectedPatientId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a registered patient')),
+        );
+        return;
+      }
+
+      final patient = currentPatients.firstWhere(
+        (p) => p.id == _selectedPatientId,
+      );
+
+      final record = DispenseRecordModel(
+        patientId: patient.id!,
+        patientName: patient.fullName,
+        medicationName: _medicationCtrl.text.trim(),
+        quantity: int.parse(_qtyCtrl.text.trim()),
+        timestamp: DateTime.now().toIso8601String(), // Auto-generated Timestamp
+      );
+
+      try {
+        await PharmacyManagementDB.instance.insertDispenseRecord(record);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Dispensing record logged successfully!'),
+            ),
+          );
+          _formKey.currentState?.reset();
+          _medicationCtrl.clear();
+          _qtyCtrl.clear();
+          setState(() => _selectedPatientId = null);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error saving record: $e')));
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    // Using FutureBuilder ensures the patient list is updated automatically
+    // when swapping between tabs
+    return FutureBuilder<List<PatientModel>>(
+      future: _patientsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF1B8F4A)),
+          );
+        }
+
+        final patients = snapshot.data ?? [];
+
+        // Maintain selection validity
+        if (_selectedPatientId != null &&
+            !patients.any((p) => p.id == _selectedPatientId)) {
+          _selectedPatientId = null;
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Log Dispensed Medication',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Color(0xFF1B8F4A)),
+                  tooltip: 'Refresh Patients',
+                  onPressed: () => setState(() => _fetchPatients()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  DropdownButtonFormField<int>(
+                    value: _selectedPatientId,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Patient',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_search),
+                    ),
+                    items: patients
+                        .map(
+                          (p) => DropdownMenuItem<int>(
+                            value: p.id,
+                            child: Text(p.fullName),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) =>
+                        setState(() => _selectedPatientId = val),
+                    validator: (val) =>
+                        val == null ? 'Please select a patient' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _medicationCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Medication Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.medication),
+                    ),
+                    validator: (val) =>
+                        val == null || val.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _qtyCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity Dispensed',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.numbers),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.isEmpty) return 'Required';
+                      if (int.tryParse(val) == null || int.parse(val) <= 0) {
+                        return 'Enter a valid number';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: () => _dispense(patients),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text(
+                        'Log Transaction',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1B8F4A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ----------------------------------------------------------------------------
+// FEATURE 3: GENERATE REPORTS
+// ----------------------------------------------------------------------------
+
+class _ReportsTab extends StatefulWidget {
+  const _ReportsTab({super.key});
+
+  @override
+  State<_ReportsTab> createState() => _ReportsTabState();
+}
+
+class _ReportsTabState extends State<_ReportsTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  DateTime? _filterDate;
+  late Future<List<DispenseRecordModel>> _recordsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRecords();
+  }
+
+  void _fetchRecords() {
+    _recordsFuture = PharmacyManagementDB.instance.getDispenseRecords(
+      date: _filterDate,
+    );
+  }
+
+  void refresh() {
+    if (mounted) setState(() => _fetchRecords());
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _filterDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _filterDate = picked;
+        _fetchRecords();
+      });
+    }
+  }
+
+  Future<void> _exportData() async {
+    final records = await _recordsFuture;
+    if (records.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No records to export.')));
+      return;
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln('ID,Patient,Medication,Quantity,Date,Time');
+    for (final r in records) {
+      final dateStr = r.timestamp.split('T')[0];
+      final timeStr = r.timestamp.split('T')[1].substring(0, 5);
+      buffer.writeln(
+        '${r.id},"${r.patientName}","${r.medicationName}",${r.quantity},$dateStr,$timeStr',
+      );
+    }
+
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('CSV Export copied to your clipboard!')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _selectDate,
+                  icon: const Icon(Icons.filter_alt),
+                  label: Text(
+                    _filterDate == null
+                        ? 'Filter by Date'
+                        : _filterDate!.toIso8601String().split('T')[0],
+                  ),
+                ),
+              ),
+              if (_filterDate != null) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.red),
+                  tooltip: 'Clear Filter',
+                  onPressed: () => setState(() {
+                    _filterDate = null;
+                    _fetchRecords();
+                  }),
+                ),
+              ],
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _exportData,
+                icon: const Icon(Icons.download),
+                label: const Text('Export'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1B8F4A),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Color(0xFF1B8F4A)),
+                tooltip: 'Refresh',
+                onPressed: () => setState(() => _fetchRecords()),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<DispenseRecordModel>>(
+            future: _recordsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF1B8F4A)),
+                );
+              }
+
+              final records = snapshot.data ?? [];
+
+              if (records.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'No dispensing records found.',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: records.length,
+                itemBuilder: (context, index) {
+                  final record = records[index];
+                  final dateStr = record.timestamp.split('T')[0];
+                  final timeStr = record.timestamp
+                      .split('T')[1]
+                      .substring(0, 5);
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: const BorderSide(color: Color(0xFFE4ECE8)),
+                    ),
+                    elevation: 0,
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(12),
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0xFFEAF7EF),
+                        child: Icon(
+                          Icons.medical_services,
+                          color: Color(0xFF1B8F4A),
+                        ),
+                      ),
+                      title: Text(
+                        '${record.medicationName} (Qty: ${record.quantity})',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 6.0),
+                        child: Text(
+                          'Patient: ${record.patientName}\nDate: $dateStr at $timeStr',
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                        ),
+                        onPressed: () async {
+                          await PharmacyManagementDB.instance
+                              .deleteDispenseRecord(record.id!);
+                          refresh();
+                        },
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
