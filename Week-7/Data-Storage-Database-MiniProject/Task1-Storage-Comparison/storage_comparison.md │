@@ -1,0 +1,67 @@
+Task 1: Storage Method Comparison
+
+Shared Preferences
+
+Advantages
+
+Simple and easy to use.
+Lightweight and requires minimal resources.
+Provides fast access to stored data.
+Suitable for storing small key-value data such as user settings and login information.
+
+Disadvantages
+
+Not secure for sensitive information.
+Supports only limited data types.
+Not suitable for storing large amounts of data.
+Cannot perform complex queries.
+
+SQLite
+
+Advantages
+
+Works offline without an internet connection.
+Supports structured data storage.
+Allows complex queries and data retrieval.
+Suitable for managing large amounts of data.
+Reliable and widely used in mobile applications.
+
+Disadvantages
+
+Requires knowledge of SQL.
+More complex to implement than Shared Preferences.
+Does not support real-time synchronization.
+Database management may become difficult as the application grows.
+
+Firebase
+
+Advantages
+
+Provides real-time data synchronization.
+Stores data in the cloud.
+Easily scalable for large applications.
+Allows data sharing across multiple devices.
+Reduces the need for managing a backend server.
+
+Disadvantages
+
+Requires an internet connection for most features.
+Depends heavily on Google's services.
+Costs can increase as usage grows.
+Less control over data management compared to local databases.
+
+Internal Storage
+
+Advantages
+
+Data is private and secure within the application.
+Does not require an internet connection.
+Suitable for storing files such as images and documents.
+Easy to access from within the application.
+
+Disadvantages
+
+Data cannot be easily shared with other applications.
+Requires manual file management.
+Not suitable for structured data storage.
+Limited by the device's storage capacity.
